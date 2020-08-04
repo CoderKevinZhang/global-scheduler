@@ -660,6 +660,11 @@ func (sched *Scheduler) scheduleInstanceStatusCheck(host string, authToken strin
 		} else if instanceStatus == "ACTIVE" {
 			klog.V(3).Infof("Instance Status: %v", instanceStatus)
 			sched.config.PodPhaseUpdater.Update(pod, v1.PodRunning)
+			if finErr := sched.config.SchedulerCache.FinishBinding(pod); finErr != nil {
+				klog.Errorf("scheduler cache FinishBinding failed: %v", finErr)
+			} else {
+				klog.V(3).Infof("scheduler FinishBinding pass")
+			}
 		}
 		break
 	}
@@ -698,6 +703,12 @@ func (sched *Scheduler) scheduleResultDequeue(scheduleResultQueue *internalqueue
 
 func (sched *Scheduler) startScheduling(scheduleResultQueue *internalqueue.Queue, pod *v1.Pod, tokenMap map[string]string, manifest *v1.PodSpec) {
 	scheduleResult, _ := sched.globalSchedule(pod)
+	assumedPod := pod.DeepCopy()
+	err := sched.assume(assumedPod, scheduleResult.SuggestedHost)
+	if err != nil {
+		klog.Errorf("error assuming pod: %v", err)
+		return
+	}
 	go scheduleResultEnqueue(scheduleResultQueue, scheduleResult)
 	go sched.scheduleResultDequeue(scheduleResultQueue, tokenMap, manifest, pod)
 }
